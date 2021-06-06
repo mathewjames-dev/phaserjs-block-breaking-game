@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+
+<head>
+    <meta charset="UTF-8" />
+    <title>
+        mathewjames.dev Phaser 3 Game Design Course
+    </title>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.16.2/dist/phaser.min.js"></script>
+</head>
+
+<body itemscope itemtype="http://schema.org/CreativeWork/WebApplication">
+    <div id="gameCanvas"></div>
+    <script>
+        // Create a JavaScript game object linking to Phaser.Game object.
+        const Breakout = new Phaser.Class({
+            Extends: Phaser.Scene,
+            initialize: function Breakout() {
+                Phaser.Scene.call(this, { key: 'breakout' });
+
+                this.ball; // Adding ball variable.
+                this.paddle; // New variable which will manage our players interaction.
+                this.brick; // Setup an individual brick inside the grid.
+                this.brickGrid; // Group of bricks
+                this.score = 0;
+                this.scoreText;
+                this.gameOver = false;
+                this.lives = 3; // Max attemps allowed.
+                this.livesText;
+                this.lifeLostText;
+                this.playAgainBtn;
+                this.textStyle = { font: '18px Arial', fill: '#0095DD' };
+
+                // Create audio variable.
+                this.sound;
+            },
+
+            // Phaser 3 essential functions per Scene.
+            preload: function () {
+                // Remote URL to game assets
+                this.load.crossOrigin = 'anonymous';
+
+                /*
+                    Game Security: loading game assets from a specific website.
+                    Reason we would use a live base asset URL is to ensure all the gamers
+                    worldwide are using the most up to date game assets.
+                 */
+                // this.load.setBaseURL('http://makingbrowsergames.com/p3devcourse/standard/img/');
+
+                this.load.image('ball', 'assets/ball.png'); // Load the ball assets, with a key of ball.
+                this.load.image('paddle', 'assets/paddle.png'); // Load the paddle asset.
+                this.load.image('brick', 'assets/brick.png'); // Load the brick asset.
+                this.load.image('button', 'assets/button.png'); // Load the button asset.
+
+                this.load.spritesheet('wobble', 'assets/wobble.png',
+                    { frameWidth: 20, frameHeight: 20 });
+                this.load.audio('pop', "assets/audio/pop.ogg");
+            },
+
+            create () {
+                this.ball = this.physics.add.sprite(100, 150, 'ball').setOrigin(0);
+                this.ball.setVelocity(150, 150); // Set the velocity.
+
+                // Set ball to bounce off of the walls.
+                this.ball.setBounce(1);
+                this.ball.setCollideWorldBounds(true);
+
+                this.ball.setData('onPaddle', true);
+
+                // Setup the paddle image.
+                this.paddle = this.physics.add.sprite(config.width / 2, config.height - 20, 'paddle');
+                this.paddle.setImmovable(); // Lock the paddle in a static Y position.
+                this.paddle.setOrigin(0.5, 1);
+
+                // Colliders
+                // Setup brick collision.
+                this.brickGrid = this.physics.add.group();
+                this.initBricks();
+                this.physics.add.collider(this.ball, this.brickGrid, this.hitBrick, null, this);
+                this.physics.add.collider(this.ball, this.paddle, this.hitPaddle, null, this);
+
+
+                this.physics.add.collider(
+                    this.ball,
+                    this.paddle,
+                    this.hitPaddle, // What to do upon collision
+                    null,
+                    this
+                );
+
+                // Enable world bounds, but disable the floor.
+                this.physics.world.setBoundsCollision(true, true, true, false);
+
+                // Optional approach.
+                this.ball.addListener('onOutOfBounds', function () {
+                    if (this.ball.y >= this.paddle.y) {
+                        // Place ball above the scene to avoid rechecks.
+                        this.ball.y = -40;
+
+                        // Display an alert.
+                        alert('Game over!');
+
+                        // Start the game again.
+                        location.reload();
+                    }
+                }, this);
+
+                // Heads up displaying the score.
+                // Phaser 3 code pattern: text(x, y, text string, style)
+                this.scoreText = this.add.text(
+                    5, 5,
+                    'Points:0',
+                    this.textStyle
+                );
+                this.scoreText.setOrigin(0);
+
+                this.livesText = this.add.text(
+                    config.width - 180, 5,
+                    'Attempts: ' + this.lives + '', this.textStyle
+                );
+                this.livesText.setOrigin(0);
+                this.lifeLostText = this.add.text(
+                    config.width / 2,
+                    config.height / 2,
+                    'Strike lost, tap to continue',
+                    this.textStyle
+                );
+                this.lifeLostText.setOrigin(0);
+                this.lifeLostText.visible = false;
+
+                this.gameWonText = this.add.text(
+                    config.width / 2,
+                    config.height / 2,
+                    'You have won! Play again?',
+                    this.textStyle
+                );
+                this.gameWonText.setOrigin(0.5, 1);
+                this.gameWonText.visible = false;
+
+                // Setup Animations
+                this.anims.create({
+                    key: "wobble", // Name
+                    frames: [ // Frame keys
+                        { key: "wobble", frame: 0 },
+                        { key: "wobble", frame: 1 },
+                        { key: "wobble", frame: 2 }
+                    ],
+                    frameRate: 9, // Frame rate
+                    repeat: 2 // How many times to repeat the animation
+                });
+            },
+
+            update: function () {
+                this.paddle.x = this.input.x; // Paddle matches the mouse input.
+
+                if (this.gameOver == false) {
+                    // Did we miss the ball?
+                    if (this.ball.y >= this.paddle.y) {
+                        // Place ball above the scene to avoid rechecks.
+                        this.ball.y = config.height - 70;
+                        this.gameOver = true; // Ball we missed
+
+                        this.lives -= 1;
+                        this.livesText.setText('Attempts: ' + this.lives);
+
+                        // Start the game again.
+                        // location.reload();
+                        this.ball.setVelocity(0, 0); // Stop the ball.
+
+                        this.tryGameAgain(); // Continue game?
+                    }
+                }
+            },
+
+            // =====================================
+            // Supporting game Function and Classes.
+            // =====================================
+            hitPaddle(ball, paddle) {
+                // For when a collision is detected on the paddle.
+
+                var diff = 0;
+
+                if (ball.x < paddle.x) {
+                    // Ball is on the left-hand side of the paddle.
+                    diff = paddle.x - ball.x;
+                    ball.setVelocityX(-10 * diff);
+                } else if (ball.x > paddle.x) {
+                    // Ball is on the right hand-side of the paddle.
+                    diff = ball.x - paddle.x;
+                    ball.setVelocityX(10 * diff);
+                } else {
+                    // Ball is perfectly in the middle.
+                    // Add a little random X to stop it bouncing straight up.
+                    ball.setVelocityX(2 + Math.random() * 8);
+                }
+
+                this.ball.play('wobble');
+            },
+
+            hitBrick(ball, brick) {
+                brick.destroy();
+
+                var sound = this.sound.add("pop");
+                sound.play();
+
+                // Update the score
+                this.score += 10;
+                this.scoreText.setText('Points: ' + this.score);
+            },
+
+            initBricks() {
+                // New brick into a static grid group.
+                // Phaser 3 code pattern:
+                // create (x, y, key, frame, visible, active)
+                this.brickGrid = this.physics.add.staticGroup({
+                    key: 'brick',
+                    frameQuantity: 100,
+                    gridAlign: {
+                        width: 10,
+                        height: 30,
+                        cellWidth: 52,
+                        cellHeight: 23,
+                        x: config.width / 2 - ((10 * 52) / 2), // Probably an easier way to center.
+                        y: 50
+                    },
+                });
+            },
+
+            tryGameAgain() {
+                // Create a play again button, and make it interactive with a pointer down event.
+                this.playAgainBtn = this.add.image(config.width / 2, config.height / 3, "button");
+                this.playAgainBtn.setFrame(2);
+                this.playAgainBtn.setInteractive();
+                this.playAgainBtn.on("pointerdown", this.newGame, this);
+            },
+
+            newGame() {
+                // Lost game condition.
+                if (this.lives < 1) {
+                    this.scene.restart();
+                    this.lifeLostText.visible = false;
+                    this.lives = 3;
+                    this.score = 0;
+                } else if (this.score >= 1000) {
+                    // Won game condition
+                    this.ball.setVelocity(0, 0); // Stop ball movement
+                    this.gameOver = false; // Reset the game over flag
+                    this.lives = 3; // Reset the lives
+                    this.score = 0; // Reset the score
+                    this.lifeLostText.visible = false; // Hide hud message
+                    this.playAgainBtn.visible = false; // Hide button;
+                    this.gameWonText.visible = true; // Show congrats message;
+                } else {
+                    // Continue playing condition.
+                    this.ball.y = this.ball.y - 30;
+                    this.ball.setVelocity(150, 150); // Set ball movement.
+                    this.gameOver = false; // Reset game over flag
+                    this.lifeLostText.visible = false; // Hide hud message
+                    this.playAgainBtn.visible = false; // Hide button
+                }
+            }
+        });
+        // End JavaScript game object linking to Phaser.Game.
+
+        // Scaling to create appropriate game configurations for any gamer's device.
+        var isItMobile = navigator.userAgent.indexOf("Mobile");
+
+        if (isItMobile == -1) {
+            // -1 means it is not a mobile device.
+            isItMobile = navigator.userAgent.indexOf("Tablet");
+        }
+
+        // Now select appropriate game configurations.
+        if (isItMobile == -1) {
+            // Unspecified Mobile Device.
+            console.log("Gamer's device is mobile.");
+
+            // Create our Phaser 3 game config.
+            var config = {
+                type: Phaser.AUTO, // .WEBGL or .Canvas
+                // width: 480, // x width - best results use the golden ratio
+                width: window.innerWidth,
+                // height: 320, // y height - best results use the golden ratio
+                height: window.innerHeight,
+                autoResize: true,
+                parent: 'gameCanvas', // Dom Element
+                scene: [Breakout],
+                backgroundColor: 0, // Custom RGB colour.
+                physics: {
+                    default: 'arcade'
+                },
+                callbacks: {
+                    postBoot(game) {
+                        // In phaser 3 you have to override phasers default styles.
+                        game.canvas.style.width = "100%";
+                        game.canvas.style.height = "100%";
+                    }
+                }
+            };
+        } else {
+            // Desktop of tablet device.
+            console.log("Gamers device is Desktop or Tablet");
+
+            // Create our Phaser 3 game config.
+            var config = {
+                type: Phaser.AUTO, // .WEBGL or .Canvas
+                width: 512, // x width - best results use the golden ratio
+                height: 320, // y height - best results use the golden ratio
+                autoResize: true,
+                parent: 'gameCanvas', // Dom Element
+                scene: [Breakout],
+                backgroundColor: 0, // Custom RGB colour.
+                physics: {
+                    default: 'arcade'
+                },
+                callbacks: {
+                    postBoot(game) {
+                        // In phaser 3 you have to override phasers default styles.
+                        game.canvas.style.width = "100%";
+                        game.canvas.style.height = "100%";
+                    }
+                }
+            };
+        }
+
+        // Launch the game.
+        var game = new Phaser.Game(config);
+    </script>
+</body>
+
+</html>
